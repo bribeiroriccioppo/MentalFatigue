@@ -46,7 +46,7 @@ def load_data(xdf_files):
     return participants
 
 if (__name__ == "__main__"):
-    questionnaire = load_data(['S10_2022-05-12.xdf'])
-    print(questionnaire["S10"]['Questionnaire'])
-    questionnaire["S10"]['Questionnaire'].to_csv('Questionnaire_Results_S10.csv')
+    questionnaire = load_data(['S11_2022-05-30.xdf'])
+    print(questionnaire["S11"]['Questionnaire'])
+    questionnaire["S11"]['Questionnaire'].to_csv('Questionnaire_Results_S11.csv')
 

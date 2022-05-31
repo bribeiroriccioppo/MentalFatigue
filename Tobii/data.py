@@ -70,11 +70,6 @@ def load_data(xdf_files):
         keyboard_df = streamkeyboard2df(stream_keyboard)
         keyboard_df = keyboard_df[keyboard_df.events == 'SPACE pressed']
 
-        #tone_task_duration = tone_tasks_df['end_ts'] - tone_tasks_df['init_ts']
-        #tone_tasks_df['lsl_end_ts'] = stream_mentalfatigue_tone_task['time_stamps']
-        #tone_tasks_df['lsl_init_ts'] = tone_tasks_df['lsl_end_ts'] - tone_task_duration
-        #tone_tasks_df.drop(columns=['init_ts', 'end_ts'], inplace=True)
-
         # Create blocks dataframe
         blocks_df = stream2df(stream_mentalfatigue_blocks)
         #print(blocks_df)
@@ -137,11 +132,12 @@ def load_data(xdf_files):
         tobii_df['left_pupil_pct'] = 0
         tobii_df['right_pupil_pct'] = 0
 
+        baseline = tobii_df.loc[tobii_df['block_idx'] == 1.0].median()
+        
         for _, row in blocks_df.iterrows():
-        #for _, row in math_tasks_df.iterrows():
             tobii_row_indices = ((tobii_df['lsl_ts'] >= row['lsl_init_ts']) & (tobii_df['lsl_ts'] <= row['lsl_end_ts']))
             block_tobii_df = tobii_df[tobii_row_indices]
-            baseline = block_tobii_df.head(9).median()
+            #baseline = block_tobii_df.head(9).median()
             tobii_df.loc[tobii_row_indices,
                          'left_pupil_pct'] = block_tobii_df['left_pupil'] / baseline.left_pupil
             tobii_df.loc[tobii_row_indices,
