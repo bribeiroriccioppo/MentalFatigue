@@ -33,6 +33,7 @@ def load_data(xdf_files):
         # Find streams
         for stream in data:
             if stream['info']['name'][0] == 'MentalFatigue_Blocks':
+                #print(stream['time_series'])
                 stream_mentalfatigue_blocks = stream
             elif stream['info']['name'][0] == 'MentalFatigue_Math_Task':
                 stream_mentalfatigue_math_task = stream
@@ -49,9 +50,10 @@ def load_data(xdf_files):
         math_tasks_df['lsl_end_ts'] = stream_mentalfatigue_math_task['time_stamps']
         math_tasks_df['lsl_init_ts'] = math_tasks_df['lsl_end_ts'] - math_task_duration
         math_tasks_df.drop(columns=['init_ts', 'end_ts'], inplace=True)
-
         # Create tone task + keyboard dataframe
         tone_tasks_df = stream2df(stream_mentalfatigue_tone_task)
+        tone_tasks_df['lsl_stimulus_ts'] = stream_mentalfatigue_tone_task['time_stamps']
+        #print(tone_tasks_df)
         keyboard_df = streamkeyboard2df(stream_keyboard)
         keyboard_df = keyboard_df[keyboard_df.events == 'SPACE pressed']
 
