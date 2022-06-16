@@ -52,10 +52,9 @@ def load_data(xdf_files):
         math_tasks_df.drop(columns=['init_ts', 'end_ts'], inplace=True)
         # Create tone task + keyboard dataframe
         tone_tasks_df = stream2df(stream_mentalfatigue_tone_task)
-        tone_tasks_df['lsl_stimulus_ts'] = stream_mentalfatigue_tone_task['time_stamps']
-        #print(tone_tasks_df)
+        tone_tasks_df['stimulus_ts'] = stream_mentalfatigue_tone_task['time_stamps']
         keyboard_df = streamkeyboard2df(stream_keyboard)
-        keyboard_df = keyboard_df[keyboard_df.events == 'SPACE pressed']
+        keyboard_df = keyboard_df[keyboard_df.events == 'SPACE pressed'] 
 
         reaction_window = 1.5 #seconds
         space_ts = np.empty(tone_tasks_df['stimulus_ts'].shape)
