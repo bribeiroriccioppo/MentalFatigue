@@ -12,20 +12,14 @@ import os
 import pyxdf
 import pandas as pd
 
-NAMES_1020 = ['C4', 'C2', 'Cz', 'C1', 'C3', 'FT8', 'TP8', 'FT7', 'TP7']
-BAD_CHANNELS = ['C2', 'Cz', 'C1', 'C3', 'FT8', 'FT7', 'TP7',
-                'F8', 'F3', 'F4', 'P4', 'P3', 'T3', 'T4']  # Unused channels
-
-CHANNELS = {'All': ['C4', 'TP8'],
-            'C4': ['C4'],
-            'TP8': ['TP8']}
-
 FREQ_BANDS = [('Delta', 1, 3),
               ('Theta', 4, 7),
               ('Alpha1', 8, 10),
               ('Alpha2', 11, 13),
+              ('Alpha', 8, 13),
               ('Beta', 14, 30),
               ('Gamma', 31, 45)]
+
 EVENTS = {'0.0': 0, '1.0': 1, '2.0': 2, '3.0': 3, '6.0': 6, '8.0': 8, '10.0': 10,
           '12.0': 12, '13.0': 13, '14.0': 14, '15.0': 15, '16.0': 16, '17.0': 17, 
           '18.0': 18, '19.0': 19, '20.0': 20, '21.0': 21, '22.0': 22, '23.0': 23, 
@@ -33,120 +27,83 @@ EVENTS = {'0.0': 0, '1.0': 1, '2.0': 2, '3.0': 3, '6.0': 6, '8.0': 8, '10.0': 10
           '30.0': 30, '31.0': 31, '32.0': 32, '33.0': 33, '34.0': 34, '35.0': 35,
           '36.0': 36, '37.0': 37, '38.0': 38, '39.0': 39, '40.0': 40}
 
-
 def stream2df(stream):
     """ Convert XDF stream to pandas Dataframe """
     col_names = [stream['info']['desc'][0]['channels'][0]['channel'][i]['name'][0]
                  for i in range(stream['time_series'].shape[1])]
     return pd.DataFrame(data=stream['time_series'], columns=col_names)
 
-
-def stream2mne(stream):
-    """
-    Adapted from https://github.com/cbrnr/mnelab/blob/main/mnelab/io/xdf.py
-    We cannot use it because we don't have a XDF file at this point.
-    """
-
-    n_chans = int(stream["info"]["channel_count"][0])
-    fs = float(stream["info"]["nominal_srate"][0])
-    origin_time = stream['time_stamps'][0]
-
-    # Search for labels and units in the stream;
-    # create otherwise
-    labels, units = [], []
-    try:
-        for ch in stream["info"]["desc"][0]["channels"][0]["channel"]:
-            labels.append(str(ch["label"][0]))
-            if ch["unit"]:
-                units.append(ch["unit"][0])
-    except (TypeError, IndexError):  # no channel labels found
-        pass
-    if not labels:
-        labels = [str(n) for n in range(n_chans)]
-    if not units:
-        units = ["NA" for _ in range(n_chans)]
-
-    # Create MNE object converting from microvolts to volts
-    scale = np.array([1e-6 if u == "microvolts" else 1 for u in units])
-    info = mne.create_info(ch_names=labels, sfreq=fs, ch_types="eeg")
-    raw = mne.io.RawArray(
-        (stream["time_series"] * scale).T, info, verbose=False)
-    raw.rename_channels(dict(zip(labels, NAMES_1020)))
-    raw.set_montage('standard_1020')
-    raw.info['bads'] = BAD_CHANNELS
-    raw.drop_channels(raw.info['bads'])
-    return raw, origin_time
-
-
-def load_data(xdf_files):
+def load_data(csv_files, XDF):
     """ Load data and basic cleaning"""
     participants = {}
-
-    for XDF in xdf_files:
-        data, _ = pyxdf.load_xdf(XDF)
-
-        # Find streams
-        for stream in data:
-            if stream['info']['type'][0] == 'EEG':
-                stream_eeg = stream
-            elif stream['info']['name'][0] == 'MentalFatigue_Blocks':
-                stream_mentalfatigue_blocks = stream
-            elif stream['info']['name'][0] == 'MentalFatigue_Math_Task':
-                stream_mentalfatigue_math_task = stream
-            elif stream['info']['name'][0] == 'MentalFatigue_Questionnaire':
-                stream_mentalfatigue_quest = stream
-
-        # Create math task dataframe
-        math_tasks_df = stream2df(stream_mentalfatigue_math_task)
-        math_task_duration = math_tasks_df['end_ts'] - math_tasks_df['init_ts']
-        math_tasks_df['lsl_end_ts'] = stream_mentalfatigue_math_task['time_stamps']
-        math_tasks_df['lsl_init_ts'] = math_tasks_df['lsl_end_ts'] - math_task_duration
-        math_tasks_df.drop(columns=['init_ts', 'end_ts'], inplace=True)
-
-        # Create blocks dataframe
-        blocks_df = stream2df(stream_mentalfatigue_blocks)
-        block_duration = blocks_df['end_ts'] - blocks_df['init_ts']
-        blocks_df['lsl_end_ts'] = stream_mentalfatigue_blocks['time_stamps']
-        blocks_df['lsl_init_ts'] = blocks_df['lsl_end_ts'] - block_duration
-        blocks_df.drop(columns=['init_ts', 'end_ts'], inplace=True)
-
-        # Create questionnaire dataframe
-        quest_df = stream2df(stream_mentalfatigue_quest)
-
-        # Create MNE object and add annotations
-        raw, origin_time = stream2mne(stream_eeg)
-
-        blocks_df['onset'] = blocks_df.lsl_init_ts - origin_time
-        blocks_df['duration'] = blocks_df.lsl_end_ts - blocks_df.lsl_init_ts
-        blocks_df.sort_values(by='block_idx', inplace=True)
-
-        # MNE Annotations
-        annotations = mne.Annotations(blocks_df.onset.values,
-                                      blocks_df.duration.values,
-                                      blocks_df.block_idx.values.astype(str))
-        raw.set_annotations(annotations)
-
-        # Save data
-        participants[os.path.splitext(os.path.basename(XDF))[0]] = {"EEG": raw,
-                                                                    "MathTasks": math_tasks_df,
-                                                                    "Blocks": blocks_df,
-                                                                    "Questionnaire": quest_df}
-
-    return participants
+    data = []
 
 
-def preprocessing_EEG(participants):
-    for name, data in participants.items():
-        raw = data['EEG']
+    ##### Data from headband #####
 
-        # Notch filters (sub-harmonic and power line)
-        raw = raw.notch_filter([25, 50], verbose=False)
+    for CSV in csv_files:
+        data_file = pd.read_csv(CSV, index_col=None, header=0)
+        data.append(data_file)
 
-        # High-pass filter
-        raw.filter(2, None, method='iir')
+    participants = pd.concat(data, axis=0, ignore_index=True) 
 
-        participants[name]['EEG'] = raw
-    return participants
+    # Converting to mV
+    participants[' EEG'] = participants[' EEG']*(106 / (160 * 2^17)) 
+    participants[' EEG[-]'] = participants[' EEG[-]']*(106 / (160 * 2^17))
+
+    """ # Notch filters (sub-harmonic and power line)
+    mne.filter.notch_filter(participants[' EEG'],256,[25,50])
+    mne.filter.notch_filter(participants[' EEG[-]'],256,[25,50])
+
+    # High-pass filter
+    mne.filter.filter_data(participants[' EEG'],256,2,None,method='iir')
+    mne.filter.filter_data(participants[' EEG[-]'],256,2,None,method='iir') """
+
+    ##### Data from LSL #####
+
+    data_xdf, _ = pyxdf.load_xdf(XDF)
+
+    # Find streams
+    for stream in data_xdf:
+        if stream['info']['name'][0] == 'MentalFatigue_Blocks':
+            stream_mentalfatigue_blocks = stream
+
+    # Create blocks dataframe
+    blocks_df = stream2df(stream_mentalfatigue_blocks)
+    block_duration = blocks_df['end_ts'] - blocks_df['init_ts']
+    blocks_df['lsl_end_ts'] = stream_mentalfatigue_blocks['time_stamps']
+    blocks_df['lsl_init_ts'] = blocks_df['lsl_end_ts'] - block_duration
+    blocks_df.drop(columns=['init_ts', 'end_ts'], inplace=True)
+
+
+    ##### Creating MNE object #####
+    ch_names = ['Channel']
+    fs = 256
+    origin_time = participants[' TimeStamp']
+    
+    participant_T = (participants).T
+
+    info = mne.create_info(ch_names=ch_names, sfreq=fs, ch_types="eeg")
+    raw = mne.io.RawArray(participant_T.iloc[2:3], info, verbose=False)
+
+    raw = raw.notch_filter([25, 50], verbose=False)
+    raw.filter(2, None, method='iir')
+
+    # MNE Annotations
+    blocks_df['onset'] = blocks_df.lsl_init_ts - origin_time
+    blocks_df['duration'] = blocks_df.lsl_end_ts - blocks_df.lsl_init_ts
+    blocks_df.sort_values(by='block_idx', inplace=True)
+
+    annotations = mne.Annotations(blocks_df.onset.values,
+                                    blocks_df.duration.values,
+                                    blocks_df.block_idx.values.astype(str))
+    raw.set_annotations(annotations)
+
+    participants[os.path.splitext(os.path.basename(XDF))[0]] = {"EEG": raw,
+                                                                "Blocks": blocks_df}
+
+
+    return participants, raw, origin_time
 
 
 def compute_power(epoch, fmin, fmax):
@@ -176,52 +133,49 @@ def compute_relative_power(epoch, fmin, fmax):
     return epoch_relative_power
 
 
-def calculate_powers(participants):
+def calculate_powers(raw):
     powers = []
-    for name, data in participants.items():
-        # Get events
-        raw = data['EEG']
-        events, event_dict = mne.events_from_annotations(raw,
-                                                         event_id=EVENTS,
-                                                         chunk_duration=1)  # chunks of 1 sec
 
-        # Get epochs by condition and calculate power
-        for condition, value in event_dict.items():
-            for band, fmin, fmax in FREQ_BANDS:
-                epoch_power = {'participant': name,
-                               'block': value,
-                               'band': band}
-                for chs_name, chs in CHANNELS.items():
-                    thresholds = []
-                    for c in chs:
-                        data = raw.get_data(picks=c)
-                        mu = np.mean(data)
-                        sd = np.std(data)
-                        lb, ub = mu-3*sd, mu+3*sd
-                        thresholds.append(ub - lb)
-                    rejection_threshold = dict(eeg=np.max(thresholds))
-                    epoch = mne.Epochs(raw, events, {condition: value}, tmin=0, tmax=1,
-                                       picks=chs,
-                                       reject=rejection_threshold, baseline=None,
-                                       preload=True, verbose=False)
-                    if len(epoch) != 0:
-                        # Calculate power in different frequency bands
-                        power = compute_power(epoch, fmin, fmax)
-                        relative_power = compute_relative_power(epoch,
-                                                                fmin,
-                                                                fmax)
-                        epoch_power[chs_name] = power
-                        epoch_power[chs_name + '_rel'] = relative_power
-                powers.append(epoch_power)
+    # Set epoching parameters
+    event_id, tmin, tmax = 1, 0, 1
+    baseline = None
 
+    # Extract events
+    #events = mne.find_events(raw, stim_channel=None)
+    events = mne.events_from_annotations(raw, event_id=EVENTS, chunk_duration=1)  # chunks of 1 sec
+    print(events)
+
+
+    for band, fmin, fmax in FREQ_BANDS:
+        epoch_power = {'band': band}
+
+        # (re)load the data to save memory
+        #raw.pick_types(meg='grad', eog=True)  # we just look at gradiometers
+        #raw.load_data()
+
+        # Epoching
+        epoch = mne.Epochs(raw, events, event_id, tmin, tmax, baseline=baseline,
+                            reject=dict(grad=4000e-13, eeg=40e-3), # eeg in mV
+                            preload=True)
+        if len(epoch) != 0:
+            # Calculate power in different frequency bands
+            power = compute_power(epoch, fmin, fmax)
+            relative_power = compute_relative_power(epoch,
+                                                    fmin,
+                                                    fmax)
+            epoch_power['Ch'] = power
+            epoch_power['Ch_rel'] = relative_power
+
+        powers.append(epoch_power)
+       
+    
     return pd.DataFrame(powers)
 
 
-def preprocessing(xdf_files, powers=True, outliers={}):
-    participants = load_data(xdf_files)
-    participants = preprocessing_EEG(participants)
+def preprocessing(csv_files, XDF, powers=True, outliers={}):
+    participant, raw_mne, times = load_data(csv_files, XDF)
     if powers:
-        powers_df = calculate_powers(participants)
+        powers_df = calculate_powers(raw_mne)
     else:
         powers_df = None
-    return participants, powers_df
+    return participant, powers_df
