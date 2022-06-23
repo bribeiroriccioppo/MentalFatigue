@@ -27,7 +27,7 @@ FREQ_BANDS = [('Delta', 1, 3),
               ('Alpha', 8, 13),
               ('Beta', 14, 30),
               ('Gamma', 31, 45)]
-              
+
 EVENTS = {'0.0': 0, '1.0': 1, '2.0': 2, '3.0': 3, '6.0': 6, '8.0': 8, '10.0': 10,
           '12.0': 12, '13.0': 13, '14.0': 14, '15.0': 15, '16.0': 16, '17.0': 17, 
           '18.0': 18, '19.0': 19, '20.0': 20, '21.0': 21, '22.0': 22, '23.0': 23, 
@@ -186,7 +186,7 @@ def calculate_powers(participants):
         events, event_dict = mne.events_from_annotations(raw,
                                                          event_id=EVENTS,
                                                          chunk_duration=1)  # chunks of 1 sec
-
+    
         # Get epochs by condition and calculate power
         for condition, value in event_dict.items():
             for band, fmin, fmax in FREQ_BANDS:
@@ -202,7 +202,7 @@ def calculate_powers(participants):
                         lb, ub = mu-3*sd, mu+3*sd
                         thresholds.append(ub - lb)
                     rejection_threshold = dict(eeg=np.max(thresholds))
-                    epoch = mne.Epochs(raw, events, {condition: value}, tmin=0, tmax=(1/2), # 30 seconds epoch
+                    epoch = mne.Epochs(raw, events, {condition: value}, tmin=0, tmax=1, # 1 minute epoch
                                        picks=chs,
                                        reject=rejection_threshold, baseline=None,
                                        preload=True, verbose=False)
